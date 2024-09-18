@@ -7,14 +7,14 @@ import './App.css';
 import InputBox from './Compornts/InputBox';
 import { FaPlus, FaTrash, FaEdit } from 'react-icons/fa';
 
-
 const App = () => {
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showUpdateModal, setShowUpdateModal] = useState(false); 
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [inputData, setInputData] = useState({ id: null, name: '' });
   const [items, setItems] = useState([]);
   const [draggedItemIndex, setDraggedItemIndex] = useState(null);
   const listRef = useRef([]); // Ref to hold list item DOM elements
+  const touchStartPos = useRef(null); // To track touch positions
 
   useEffect(() => {
     const storedItems = JSON.parse(localStorage.getItem('items')) || [];
@@ -28,13 +28,12 @@ const App = () => {
 
   const plusIconRef = useRef(null); // Ref for FaPlus icon
 
-
-  // GSAP animation when a new item is added
+  // Submit new item
   const submitData = () => {
     if (inputData.name) {
       const newItem = { id: Date.now(), name: inputData.name };
       const updatedItems = [...items, newItem];
-      
+
       setItems(updatedItems);
       localStorage.setItem('items', JSON.stringify(updatedItems));
       setInputData({ name: '' });
@@ -47,11 +46,11 @@ const App = () => {
           { opacity: 0, y: -50 },
           { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out' }
         );
-      }, 100); // Adding slight delay to ensure DOM update
+      }, 100);
     }
   };
 
-  // GSAP animation for item update
+  // Update item
   const updateItem = () => {
     const updatedItems = items.map((item) =>
       item.id === inputData.id ? { ...item, name: inputData.name } : item
@@ -60,7 +59,7 @@ const App = () => {
     localStorage.setItem('items', JSON.stringify(updatedItems));
     setShowUpdateModal(false);
 
-    // Highlight animation using GSAP for updated item
+    // GSAP highlight animation for updated item
     const updatedIndex = updatedItems.findIndex((item) => item.id === inputData.id);
     gsap.fromTo(
       listRef.current[updatedIndex],
@@ -69,6 +68,7 @@ const App = () => {
     );
   };
 
+  // Delete item with animation
   const deleteItem = (id, index) => {
     gsap.to(listRef.current[index], { scale: -1, duration: 0.3, onComplete: () => {
       const updatedItems = items.filter((item) => item.id !== id);
@@ -77,29 +77,42 @@ const App = () => {
     }});
   };
 
-  const handleDragStart = (index) => {
-    setDraggedItemIndex(index);
-  };
-
+  // Handle dragging (desktop)
+  const handleDragStart = (index) => setDraggedItemIndex(index);
   const handleDragOver = (e, index) => {
     e.preventDefault();
     gsap.to(listRef.current[index], { scale: 1.15, duration: 0.3 });
   };
+  const handleDragLeave = (index) => gsap.to(listRef.current[index], { scale: 1, duration: 0.3 });
+  const handleDrop = (index) => {
+    if (draggedItemIndex !== null) {
+      const updatedItems = [...items];
+      const [draggedItem] = updatedItems.splice(draggedItemIndex, 1);
+      updatedItems.splice(index, 0, draggedItem);
 
-  const handleDragLeave = (index) => {
-    gsap.to(listRef.current[index], { scale: 1, duration: 0.3 });
+      setItems(updatedItems);
+      localStorage.setItem('items', JSON.stringify(updatedItems));
+
+      gsap.to(listRef.current[index], { scale: 1, opacity: 1, duration: 0.3 });
+      setDraggedItemIndex(null);
+    }
   };
 
-  const handleDrop = (index) => {
-    const updatedItems = [...items];
-    const [draggedItem] = updatedItems.splice(draggedItemIndex, 1);
-    updatedItems.splice(index, 0, draggedItem);
+  // Handle touch events (mobile)
+  const handleTouchStart = (e, index) => {
+    setDraggedItemIndex(index);
+    touchStartPos.current = e.touches[0].clientY;
+  };
 
-    setItems(updatedItems);
-    localStorage.setItem('items', JSON.stringify(updatedItems));
+  const handleTouchMove = (e) => {
+    const touchPos = e.touches[0].clientY;
+    const distance = touchPos - touchStartPos.current;
+    listRef.current[draggedItemIndex].style.transform = `translateY(${distance}px)`;
+  };
 
-    gsap.to(listRef.current[index], { scale: 1, opacity: 1, duration: 0.3 });
-    setDraggedItemIndex(null);
+  const handleTouchEnd = (index) => {
+    listRef.current[draggedItemIndex].style.transform = `translateY(0px)`;
+    handleDrop(index);
   };
 
   const handleShowAdd = () => {
@@ -113,32 +126,35 @@ const App = () => {
       <div className="backgroundapp d-flex justify-content-center align-items-center">
         <div className="d-flex justify-content-center align-items-center">
           <ul className="list-group">
-            <button className="addbutton d-flex justify-content-between" onClick={ handleShowAdd}>
+            <button className="addbutton d-flex justify-content-between" onClick={handleShowAdd}>
               <span>Add items in your list &nbsp;&nbsp;</span>
-              <span><FaPlus  ref={plusIconRef}/></span>
+              <span><FaPlus ref={plusIconRef} /></span>
             </button>
 
             {items.map((item, index) => (
               <li
                 key={item.id}
-                ref={(el) => (listRef.current[index] = el)} // Store ref of each list item
+                ref={(el) => (listRef.current[index] = el)}
                 className="list-group-item d-flex justify-content-between"
                 draggable
                 onDragStart={() => handleDragStart(index)}
                 onDragOver={(e) => handleDragOver(e, index)}
                 onDragLeave={() => handleDragLeave(index)}
                 onDrop={() => handleDrop(index)}
+                onTouchStart={(e) => handleTouchStart(e, index)}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={() => handleTouchEnd(index)}
               >
                 <span>{item.name}</span>
                 <div>
-                  <button className="btn btn-sm  mx-2" onClick={() => {
+                  <button className="btn btn-sm mx-2" onClick={() => {
                     setInputData({ id: item.id, name: item.name });
                     setShowUpdateModal(true);
                   }}>
-                    <FaEdit style={{color:'green'}} size={15} />
+                    <FaEdit style={{ color: 'green' }} size={15} />
                   </button>
                   <button className="btn btn-sm" onClick={() => deleteItem(item.id, index)}>
-                    <FaTrash style={{color:'red'}} size={15}/>
+                    <FaTrash style={{ color: 'red' }} size={15} />
                   </button>
                 </div>
               </li>
@@ -152,7 +168,6 @@ const App = () => {
         <Modal.Header closeButton>
           <Modal.Title>Add items in your list</Modal.Title>
         </Modal.Header>
-
         <Modal.Body>
           <InputBox
             label="Add name"
@@ -163,7 +178,6 @@ const App = () => {
             handleChange={handleChange}
           />
         </Modal.Body>
-
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowAddModal(false)}>
             Close
@@ -179,7 +193,6 @@ const App = () => {
         <Modal.Header closeButton>
           <Modal.Title>Update item</Modal.Title>
         </Modal.Header>
-
         <Modal.Body>
           <InputBox
             className="inputbox"
@@ -191,7 +204,6 @@ const App = () => {
             handleChange={handleChange}
           />
         </Modal.Body>
-
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowUpdateModal(false)}>
             Close
